@@ -1,0 +1,79 @@
+import streamlit as st
+import pandas as pd
+
+# --- CALCULATIONS ---
+def get_stamp_duty(price, state):
+    rates = {
+        "NSW": 11152 + (0.045 * (price - 372000)) if price > 372000 else 0.035 * price,
+        "VIC": 0.055 * price if price > 960000 else 0.045 * price,
+        "QLD": 17325 + (0.045 * (price - 540000)) if price > 540000 else 1050 + (0.035 * (price - 75000)),
+        "WA": 28453 + (0.0515 * (price - 725000)) if price > 725000 else 0.0475 * price,
+        "SA": 21330 + (0.055 * (price - 500000)) if price > 500000 else 0.05 * price,
+    }
+    return rates.get(state, 0.04 * price)
+
+def calculate_tax(taxable_income):
+    if taxable_income <= 18200: return 0
+    elif taxable_income <= 45000: return (taxable_income - 18200) * 0.18
+    elif taxable_income <= 135000: return 4824 + (taxable_income - 45000) * 0.32
+    elif taxable_income <= 190000: return 33624 + (taxable_income - 135000) * 0.39
+    else: return 55074 + (taxable_income - 190000) * 0.47
+
+# --- UI SETUP ---
+st.set_page_config(page_title="PropAnalyst Pro", layout="wide", page_icon="📈")
+st.title("📈 Australian Property Wealth Projector")
+
+with st.sidebar:
+    st.header("👤 Personal & Property")
+    salary = st.number_input("Annual Salary ($)", value=130000)
+    state = st.selectbox("State", ["NSW", "VIC", "QLD", "WA", "SA"])
+    price = st.number_input("Purchase Price ($)", value=800000)
+    rent_pw = st.number_input("Weekly Rent ($)", value=700)
+    
+    st.header("⚙️ Growth Assumptions")
+    growth_rate = st.slider("Annual Capital Growth (%)", 1.0, 10.0, 5.0)
+    rent_growth = st.slider("Annual Rent Increase (%)", 1.0, 5.0, 3.0)
+    
+    st.header("💰 Loan")
+    deposit_pct = st.slider("Deposit %", 5, 40, 20)
+    int_rate = st.number_input("Interest Rate (%)", value=6.2)
+
+# --- CALCULATIONS ---
+stamp_duty = get_stamp_duty(price, state)
+loan_amount = price * (1 - (deposit_pct/100))
+initial_equity = (price * (deposit_pct/100))
+
+# 10-Year Projection Table
+data = []
+current_val = price
+current_rent = rent_pw * 52
+
+for year in range(1, 11):
+    current_val *= (1 + growth_rate/100)
+    current_rent *= (1 + rent_growth/100)
+    equity = current_val - loan_amount
+    data.append({
+        "Year": year,
+        "Property Value": round(current_val),
+        "Estimated Equity": round(equity),
+        "Annual Rent": round(current_rent)
+    })
+
+df = pd.DataFrame(data)
+
+# --- DISPLAY ---
+st.subheader(f"🚀 10-Year Growth Forecast ({growth_rate}% p.a.)")
+c1, c2, c3 = st.columns(3)
+ten_year_val = df.iloc[-1]['Property Value']
+ten_year_equity = df.iloc[-1]['Estimated Equity']
+
+c1.metric("Value in 10 Years", f"${ten_year_val:,.0f}")
+c2.metric("Total Equity Gain", f"${ten_year_equity - initial_equity:,.0f}", delta=f"{growth_rate}% Growth")
+c3.metric("Estimated Rent (Yr 10)", f"${df.iloc[-1]['Annual Rent']/52:,.0f}/wk")
+
+st.line_chart(df.set_index('Year')[['Property Value', 'Estimated Equity']])
+
+with st.expander("📅 View Year-by-Year Breakdown"):
+    st.table(df)
+
+st.info(f"**Investor Strategy:** At a {growth_rate}% growth rate, your property value is expected to double approximately every {72/growth_rate:.1f} years.")
